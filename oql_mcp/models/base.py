@@ -38,37 +38,35 @@ class OqlMcpBase(models.AbstractModel):
 
     @mcp_tool
     @api.model
-    def oql_mcp_hint(self, partial_oql: str, cursor: int = None, limit: int = 30, offset: int = 0, verbose: int = 0):
-        """Auto-complete INCOMPLETE OQL fragments. NOT for executing queries.
-
-        Use to find out valid model or field or value candidates at given cursor position in `partial_oql`.
-        Example: partial_oql="from res.partner select id where name = ma" -> returns ['Mary', 'JackMa'].
-        The string before cursor can be an incomplete name or value, it will be used to filter and sort candidates by string similarity.
-
-        * Note: Hint follows access control rules, so you can use this to find out models or fields that you have access to.
-        Example:
-            1. partial_oql="from res.p" will return a model list you have read access to, such as: ['res.partner', 'res.company']
-            2. partial_oql="from res.partner select na" will return fields you have read access to, such as: ['name', 'display_name']
-            3. partial_oql="from res.partner select id where name = ma", result example: ['Mary', 'Ema', ...]
-
-        :param partial_oql: The unfinished text typed so far. NEVER a complete statement.
-        :param cursor: Typing position (zero-based). `None` means end of string. You should always use `None` if your want to hint at end of `partial_oql`.
-        :param limit: Max candidates to return (default: 30).
-        :param offset: Start index of result hint list in full hint list. Used for pagination.
-        :param verbose: Verbosity level of hints.
+    def oql_mcp_hint(self, hintable_oql: str, verbose: int = 0):
+        """Hint OQL at specified hint points.
+        :param hintable_oql: Partial OQL with hint points.
+          Grammar: 'Partial OQL ?hint_options'
+            hint_options: A JSON dict that contains keys:
+              name: str. Name for the hint point. It will be used as key in hint result.
+              keywords: List[str]. A list of keywords used search for possible candidates.
+              limit: int. Max hint count.
+              offset: Optional[int]. Used for paging when there are too many hint items.
+          e.g.  'FROM product.product SELECT ?{"name": "sel_field", "keywords": ["code", "de"], "limit": 10}'
+                'FROM product.?{"name": "model", "keywords": ["te"], "limit": 5}'
+                'FROM product.product SELECT id where default_code like ?{"name": "default_code", "keywords": ["danner"], "limit": 40}'
+          * Note: hint point can only be placed at the end of a partial OQL.
+        :return: {hint_point_name: {hints: [{type: ..., value: ..., desc: ...}]}}
+        :param verbose: Verbosity level of hints. Use lower level as priority.
             - 0: list of candidate strings. e.g. ['name', ...]
             - 1: list of candidate dict with value, description. e.g. [{'value': 'name', 'desc': 'Product Name'}, ...]
             - 2: list of candidate dict with value, description, type. e.g. [{'value': 'name', 'desc': 'Product Name', 'type': 'field'}, ...]
         """
-        obj = self.oql_hint(partial_oql, cursor, limit, offset)
+        hintx = self.oql_hintx(hintable_oql)
         # Align hint verbosity with `verbose` parameter.
-        hints = obj["hints"]
-        if verbose == 0:
-            hints = [x["value"] for x in hints]
-        elif verbose == 1:
-            hints = [{
-                "value": x["value"],
-                "desc": x["desc"],
-            } for x in hints]
-        obj["hints"] = hints
-        return obj
+        for obj in hintx.values():
+            hints = obj["hints"]
+            if verbose == 0:
+                hints = [x["value"] for x in hints]
+            elif verbose == 1:
+                hints = [{
+                    "value": x["value"],
+                    "desc": x["desc"],
+                } for x in hints]
+            obj["hints"] = hints
+        return hintx
